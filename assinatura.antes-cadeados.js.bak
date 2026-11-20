@@ -1,0 +1,286 @@
+// Assinatura do app: parte grátis + cadeado + tela "Assinar".
+// Entra no app pelo montar.js; o esboço continua igual. Roda depois do script principal,
+// por isso troca as funções de abrir (abrir, abrirVale...) por versões que olham o cadeado.
+(() => {
+  // ===== O que fica grátis (a Lusia decide; é só mudar os números) =====
+  const GRATIS = { desenhos: 3, formas: 2, letras: 5, numeros: 3, quebra: 2 };
+  // Jogo das Cores e Feira das Frutas ficam abertos. Vale Encantado e Sequência são da assinatura.
+  // Links de pagamento da Kiwify (produto "Colore com Helena", criado em 31/10)
+  const LINKS = { mensal: "https://pay.kiwify.com.br/9P9HQon", anual: "https://pay.kiwify.com.br/RIK2pX5" }; // anual = plano de lançamento 12x (RIK2pX5, 12x de R$ 8,26 com juros da Kiwify) até 30/11 (depois: d1O6hAv, R$ 99,90)
+  // TRAVA FORTE (31/10): endereço do servidor (Google Apps Script, mini-app/trava/Codigo.gs).
+  // Vazio = ainda não instalado: o app usa a lista antiga de e-mails (assinantes.json).
+  const SERVIDOR = "https://script.google.com/macros/s/AKfycbylt4cbcJ9s2M_cmMI48UTH3LvC6yZRts-MnqSerCxDreYWhzdMZZR8_Wbc2nvFaEW-/exec";
+  const SAL = "colore-com-helena";
+  const VALE_SEM_INTERNET = 35 * 864e5; // 35 dias: depois disso precisa conferir de novo com internet
+
+  const TERMOS_VERSAO = "2026-11-18"; // mudou os Termos/Privacidade? troque a data
+  let aceite = null;
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem("helena-assinatura")) || {}; } catch (e) {}
+  const salva = () => { try { localStorage.setItem("helena-assinatura", JSON.stringify(st)); } catch (e) {} };
+  // TESTE GRÁTIS (16/11, pedido da dona para as mães dos alunos): link com ?teste=3dias (o antigo 7dias também vale, mas dá 3) libera tudo
+  // por TESTE_DIAS dias a contar do 1º acesso neste aparelho; depois volta a ser a versão grátis (com o convite para assinar).
+  const TESTE_DIAS = 3; // 16/11: ela mudou de 7 para 3 dias
+  try { if (/^(3|7)dias$/.test(new URLSearchParams(location.search).get("teste") || "") && !st.testeDesde) { st.testeDesde = Date.now(); localStorage.setItem("helena-assinatura", JSON.stringify(st)); } } catch (e) {}
+  const emTeste = () => !!st.testeDesde && Date.now() - st.testeDesde < TESTE_DIAS * 864e5;
+  const assinante = () => (!!st.ok && Date.now() - (st.conferido || 0) < VALE_SEM_INTERNET); // 16/11: o teste NÃO entra aqui (só libera o quebra-cabeça)
+
+  async function hashDo(email) {
+    const dados = new TextEncoder().encode(SAL + ":" + email.trim().toLowerCase());
+    const h = await crypto.subtle.digest("SHA-256", dados);
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Confere o e-mail na lista do site. Devolve true/false, ou null se estiver sem internet.
+  async function confere(email) {
+    try {
+      const r = await fetch("assinantes.json?t=" + Date.now(), { cache: "no-store" });
+      if (!r.ok) return null;
+      const lista = await r.json();
+      return (lista.hashes || []).includes(await hashDo(email));
+    } catch (e) { return null; }
+  }
+
+  // ===== Visual do cadeado e da janela =====
+  const css = document.createElement("style");
+  css.textContent = `
+    .trancado { position: relative; opacity: .55; }
+    .trancado::after { content: "🔒"; position: absolute; top: 6px; right: 8px; font-size: 18px; }
+    .secao.trancado { opacity: .7; }
+    .cartaoAssinatura { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 18px;
+      padding: 12px 14px; margin: 0 0 14px; box-shadow: 0 2px 10px rgba(0,0,0,.07); }
+    .cartaoAssinatura p { margin: 0; flex: 1; font-size: 14px; line-height: 1.35; }
+    .cartaoAssinatura .btn { white-space: nowrap; }
+    #janelaAss { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center;
+      z-index: 80; padding: 16px; }
+    #janelaAss.aberta { display: grid; }
+    #janelaAss .caixa { background: #fff; border-radius: 22px; padding: 22px 18px; max-width: 380px; width: 100%;
+      text-align: center; }
+    #janelaAss h2 { margin: 4px 0 8px; }
+    #janelaAss p { margin: 0 0 14px; line-height: 1.4; }
+    #janelaAss input { width: 100%; font-size: 18px; padding: 12px; border-radius: 12px; border: 2px solid #ddd;
+      margin-bottom: 12px; text-align: center; }
+    #janelaAss .botoes { display: flex; flex-direction: column; gap: 8px; }
+    #janelaAss .msg { min-height: 20px; color: #B3261E; font-size: 14px; margin: 0 0 8px; }`;
+  document.head.appendChild(css);
+
+  const jan = document.createElement("div");
+  jan.id = "janelaAss";
+  jan.innerHTML = `<div class="caixa" id="janelaConteudo"></div>`;
+  document.body.appendChild(jan);
+  jan.addEventListener("click", e => { if (e.target === jan) fecha(); });
+  const fecha = () => jan.classList.remove("aberta");
+  const mostra = html => { $("janelaConteudo").innerHTML = html; jan.classList.add("aberta"); };
+
+  // Tela do cadeado (é o que a criança vê): pede para chamar um adulto.
+  function cadeado() {
+    if (typeof calar === "function") calar();
+    mostra(`<div style="font-size:52px">🔒</div>
+      <h2>Essa parte é da assinatura</h2>
+      <p>Chame um adulto para liberar todos os desenhos, letras, números, quebra-cabeças e jogos.</p>
+      <div class="botoes">
+        <button class="btn verde" id="assAdulto">👩 Sou o adulto</button>
+        <button class="btn" id="assFecha">Voltar</button>
+      </div>`);
+    $("assAdulto").onclick = () => portaoDoAdulto();
+    $("assFecha").onclick = fecha;
+  }
+
+  // Pergunta simples para a criança pequena não chegar sozinha no pagamento.
+  function portaoDoAdulto(depois = paraAdulto) {
+    const a = 3 + Math.floor(Math.random() * 6), b = 4 + Math.floor(Math.random() * 5);
+    mostra(`<h2>Só para adultos</h2>
+      <p>Quanto é ${a} + ${b}?</p>
+      <input id="assConta" inputmode="numeric" autocomplete="off">
+      <p class="msg" id="assMsg"></p>
+      <div class="botoes">
+        <button class="btn verde" id="assOk">Continuar</button>
+        <button class="btn" id="assFecha">Voltar</button>
+      </div>`);
+    $("assOk").onclick = () => +$("assConta").value === a + b ? depois() : ($("assMsg").textContent = "Resposta errada.");
+    $("assFecha").onclick = fecha;
+  }
+
+  function paraAdulto() {
+    // 14/11 (ideia aprovada pela Lusia): quem testou a parte grátis volta para a compra com um convite forte.
+    mostra(`<div style="font-size:44px">⭐</div>
+      <h2>Gostou? Libere tudo!</h2>
+      <p>Todos os desenhos, letras de A a Z, números, formas, quebra-cabeças e jogos, com a Hora da pausa que você controla. Sem anúncio. Desenhos novos chegando sempre.</p>
+      <p style="font-size:22px;margin:0 0 4px"><b style="color:#2BA84A">R$ 79,90 por ano</b></p>
+      <p style="font-size:13px;margin:0 0 12px">à vista, ou 12x de R$ 8,26 (total R$ 99,12) · mensal R$ 14,90 (preço de lançamento até 30/11)<br>🛡️ 7 dias de garantia: se não gostar, devolvemos 100%</p>
+      <div class="botoes">
+        <button class="btn verde" id="assQuero">Quero liberar tudo</button>
+        <button class="btn forte" id="assJa">Já sou assinante</button>
+        <button class="btn" id="assFecha">Agora não</button>
+      </div>`);
+    $("assQuero").onclick = () => {
+      mostra(`<h2>Escolha o plano</h2>
+        <p>Depois de pagar, volte aqui e toque em "Já sou assinante" com o mesmo e-mail da compra.</p>
+        <div class="botoes">
+          <button class="btn verde" id="assAnual">⭐ Anual: R$ 79,90 à vista<br><small>ou 12x de R$ 8,26 (total R$ 99,12) · lançamento até 30/11</small></button>
+          <button class="btn forte" id="assMensal">Mensal: R$ 14,90<br><small>preço de lançamento até 30/11</small></button>
+          <button class="btn" id="assFecha">Voltar</button>
+        </div>`);
+      $("assAnual").onclick = () => window.open(LINKS.anual, "_blank");
+      $("assMensal").onclick = () => window.open(LINKS.mensal, "_blank");
+      $("assFecha").onclick = fecha;
+    };
+    $("assJa").onclick = pedeEmail;
+    $("assFecha").onclick = fecha;
+  }
+
+  function pedeEmail() {
+    mostra(`<h2>Já sou assinante</h2>
+      <p>Digite o e-mail usado na compra.</p>
+      <input id="assEmail" type="email" inputmode="email" autocomplete="email" placeholder="seu@email.com" value="${st.email || ""}">
+      <label style="display:flex;gap:10px;align-items:flex-start;text-align:left;font-size:14px;margin:12px 0 0;cursor:pointer">
+        <input id="assAceite" type="checkbox" style="width:22px;height:22px;flex:none;margin:0" ${st.aceite ? "checked" : ""}>
+        <span>Li e aceito os <a href="termos.html" target="_blank">Termos de uso</a> e a <a href="privacidade.html" target="_blank">Política de Privacidade</a>.</span>
+      </label>
+      <p class="msg" id="assMsg"></p>
+      <div class="botoes">
+        <button class="btn verde" id="assEntrar">Liberar o app</button>
+        <button class="btn" id="assFecha">Voltar</button>
+      </div>`);
+    $("assFecha").onclick = fecha;
+    if (SERVIDOR) $("assEntrar").textContent = "Mandar código para o e-mail";
+    $("assEntrar").onclick = async () => {
+      const email = $("assEmail").value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(email)) return ($("assMsg").textContent = "Confira o e-mail.");
+      if (!$("assAceite").checked) return ($("assMsg").textContent = "Marque a caixinha para aceitar os Termos e a Privacidade.");
+      // Registro do aceite (LGPD, 18/11): versão dos termos + data/hora, guardado no aparelho e mandado ao servidor
+      aceite = st.aceite || { versao: TERMOS_VERSAO, em: new Date().toISOString() };
+      if (SERVIDOR) return pedeCodigo(email);
+      $("assMsg").textContent = "Conferindo...";
+      const ok = await confere(email);
+      if (ok === null) return ($("assMsg").textContent = "Sem internet agora. Tente de novo com internet.");
+      if (!ok) return ($("assMsg").textContent = "Não achei esse e-mail. Se acabou de assinar, espere alguns minutos.");
+      st = { email, ok: true, conferido: Date.now(), aceite };
+      salva();
+      montaInicio();
+      mostra(`<div style="font-size:52px">🎉</div><h2>Tudo liberado!</h2><p>Bom divertimento!</p>
+        <div class="botoes"><button class="btn verde" id="assFecha">Vamos lá</button></div>`);
+      $("assFecha").onclick = fecha;
+    };
+  }
+
+  // ===== Trava forte: código por e-mail (só com SERVIDOR) =====
+  async function servidor(params) {
+    try {
+      const r = await fetch(SERVIDOR + "?" + new URLSearchParams(params), { cache: "no-store" });
+      return r.ok ? await r.json() : null;
+    } catch (e) { return null; }
+  }
+  const tudoLiberado = () => {
+    montaInicio();
+    mostra(`<div style="font-size:52px">🎉</div><h2>Tudo liberado!</h2><p>Bom divertimento!</p>
+      <div class="botoes"><button class="btn verde" id="assFecha">Vamos lá</button></div>`);
+    $("assFecha").onclick = fecha;
+  };
+
+  async function pedeCodigo(email) {
+    $("assMsg").textContent = "Mandando...";
+    const r = await servidor({ acao: "pedir", email });
+    if (!r) return ($("assMsg").textContent = "Sem internet agora. Tente de novo com internet.");
+    if (!r.ok) return ($("assMsg").textContent = r.msg || "Não deu certo. Tente de novo.");
+    mostra(`<h2>Digite o código</h2>
+      <p>${r.msg}</p>
+      <input id="assCodigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+      <p class="msg" id="assMsg"></p>
+      <div class="botoes">
+        <button class="btn verde" id="assOkCod">Entrar</button>
+        <button class="btn" id="assFecha">Voltar</button>
+      </div>`);
+    $("assFecha").onclick = fecha;
+    $("assOkCod").onclick = async () => {
+      const codigo = $("assCodigo").value.replace(/\D/g, "");
+      if (codigo.length !== 6) return ($("assMsg").textContent = "O código tem 6 números.");
+      $("assMsg").textContent = "Conferindo...";
+      const e = await servidor({ acao: "entrar", email, codigo, aparelho: st.aparelho || "", aceite: aceite ? aceite.versao + "|" + aceite.em : "" });
+      if (!e) return ($("assMsg").textContent = "Sem internet agora. Tente de novo com internet.");
+      if (!e.ok) return ($("assMsg").textContent = e.msg || "Código errado.");
+      st = { email, ok: true, conferido: Date.now(), passe: e.passe, aparelho: e.aparelho, aceite };
+      salva();
+      tudoLiberado();
+    };
+  }
+
+  // ===== Trava nas funções do app =====
+  const original = { abrir, abrirSecao, abrirVale, abrirSequencia, abrirQuebra, montaQuebra, montaInicio };
+  const livreNaSecao = i => assinante() || (secaoAtual === "quebra" && emTeste()) || i < (GRATIS[secaoAtual] ?? 0);
+  const indiceQC = f => Object.keys(FIGURAS_QC).indexOf(f);
+
+  abrir = (i, ...resto) => livreNaSecao(i) ? original.abrir(i, ...resto) : cadeado();
+  abrirVale = () => assinante() ? original.abrirVale() : cadeado();
+  abrirSequencia = () => assinante() ? original.abrirSequencia() : cadeado();
+  montaQuebra = f => assinante() || emTeste() || indiceQC(f) < GRATIS.quebra ? original.montaQuebra(f) : cadeado();
+
+  // Fim do tempo de tela (parte grátis): além da brincadeira, um convite para o adulto liberar tudo.
+  if (typeof telaDescanso === "function") {
+    const descansoOriginal = telaDescanso;
+    telaDescanso = () => {
+      const jaAberta = $("pausaTela").classList.contains("aberta");
+      descansoOriginal();
+      if (jaAberta || assinante() || $("pausaConvite")) return;
+      const b = document.createElement("button");
+      b.className = "btn verde"; b.id = "pausaConvite";
+      b.style.marginTop = "10px";
+      b.innerHTML = "⭐ Gostou? Libere tudo por R$ 79,90 no ano";
+      b.onclick = () => portaoDoAdulto(); // abre POR CIMA do descanso: fechar volta para o bloqueio (a criança não escapa)
+      $("pausaCaixa").appendChild(b);
+    };
+  }
+
+  abrirSecao = id => {
+    original.abrirSecao(id);
+    if (assinante()) return;
+    [...$("itens").children].forEach((b, i) => b.classList.toggle("trancado", i >= (GRATIS[id] ?? 0)));
+  };
+  abrirQuebra = () => {
+    original.abrirQuebra();
+    if (assinante() || emTeste()) return;
+    [...$("qcLista").children].forEach((b, i) => b.classList.toggle("trancado", i >= GRATIS.quebra));
+  };
+  montaInicio = () => {
+    original.montaInicio();
+    const cartao = document.createElement("div");
+    cartao.className = "cartaoAssinatura";
+    if (emTeste() && !st.ok) {
+      const faltam = Math.max(1, Math.ceil((st.testeDesde + TESTE_DIAS * 864e5 - Date.now()) / 864e5));
+      cartao.innerHTML = `<span style="font-size:26px">🎁</span><p><b>Teste grátis</b><br>Quebra-cabeça liberado por mais ${faltam === 1 ? "1 dia" : faltam + " dias"}. Assine para abrir tudo.</p>
+        <button class="btn verde" id="assAbrir">Assinar</button>`;
+      document.querySelectorAll(".secao.s-vale, .secao.s-seq").forEach(b => b.classList.add("trancado"));
+    } else if (assinante()) {
+      // 16/11: bônus de quem assina (decisão da dona) = Kit 30 Dias de Férias + Mini Kit de Natal (PDF em pasta com nome secreto)
+      cartao.innerHTML = `<span style="font-size:26px">⭐</span><p><b>Assinante</b><br>Tudo liberado. Obrigada!</p>
+        <a class="btn verde" href="bonus-a288c7a2f776/kit-30-dias-e-natal.pdf" target="_blank" rel="noopener" download>🎁 Baixar meu bônus: Kit 30 Dias + Natal</a>`;
+    } else {
+      cartao.innerHTML = `<span style="font-size:26px">🔒</span><p><b>Versão grátis</b><br>Parte do app liberada. Assine para abrir tudo.</p>
+        <button class="btn verde" id="assAbrir">Assinar</button>`;
+      document.querySelectorAll(".secao.s-vale, .secao.s-seq").forEach(b => b.classList.add("trancado"));
+    }
+    $("secoes").before(cartao);
+    const velho = cartao.previousElementSibling;
+    if (velho && velho.classList.contains("cartaoAssinatura")) velho.remove();
+    const btn = $("assAbrir");
+    if (btn) btn.onclick = () => portaoDoAdulto();
+  };
+
+  // Os botões do início foram criados antes da trava: monta de novo.
+  montaInicio();
+
+  // Assinante: confere de novo sempre que abrir com internet (se cancelou, trava).
+  if (SERVIDOR && st.passe) servidor({ acao: "conferir", passe: st.passe }).then(r => {
+    if (!r) return; // sem internet: vale o passe guardado (até 35 dias)
+    st.ok = !!r.ok; st.conferido = Date.now();
+    if (r.passe) st.passe = r.passe;
+    salva();
+    montaInicio();
+  });
+  else if (SERVIDOR && st.ok && !st.passe) { st.ok = false; salva(); montaInicio(); } // quem entrou pela lista antiga entra de novo com código
+  else if (st.email) confere(st.email).then(ok => {
+    if (ok === null) return;
+    st.ok = ok; st.conferido = Date.now(); salva();
+    montaInicio();
+  });
+})();
