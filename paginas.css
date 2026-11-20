@@ -28,7 +28,7 @@ summary { font-weight: 700; cursor: pointer; }
 footer.rodape { max-width: 720px; margin: 0 auto; padding: 18px 16px 40px; font-size: 14px; color: var(--suave); border-top: 1px solid var(--linha); }
 footer.rodape a { margin-right: 14px; }
 
-
+/* ===== Tema "educação" (02/11, pedido da Lusia: cara profissional que remete a educação) ===== */
 :root { --tinta: #1E3A5F; --papel: #FBF8F1; --pauta: rgba(30,58,95,.06); --margem: rgba(230,57,70,.18); }
 body { background: var(--papel); color: #2A2F36; font-family: "Nunito", "Segoe UI", Roboto, Arial, sans-serif; }
 h1, h2, h3 { font-family: "Fraunces", Georgia, serif; color: var(--tinta); letter-spacing: -.005em; }
