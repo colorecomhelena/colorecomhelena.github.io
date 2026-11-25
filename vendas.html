@@ -66,6 +66,13 @@
   .plano p { margin: 6px 0; font-size: 15px; color: #4a433d; }
   .plano .botao { width: 100%; text-align: center; margin-top: 12px; }
   .faixa { background: var(--amar); color: #3b2e00; text-align: center; font-weight: 800; padding: 10px 14px; border-radius: 14px; }
+  .confianca { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .confianca span { background: #fff; border: 2px solid var(--linha); border-radius: 14px; padding: 10px 8px; text-align: center; font-size: 14px; font-weight: 700; color: #4a433d; }
+  .tres { display: grid; gap: 10px; margin-top: 10px; }
+  .passo { display: flex; gap: 12px; align-items: center; background: #fff; border: 2px solid var(--linha); border-radius: 16px; padding: 10px 14px; }
+  .passo b { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%; background: var(--verde); color: #fff; display: grid; place-items: center; font-size: 18px; }
+  .passo p { margin: 0; font-size: 15px; line-height: 1.35; }
+  @media (min-width: 640px) { .confianca { grid-template-columns: repeat(4, 1fr); } .tres { grid-template-columns: repeat(3, 1fr); } .passo { align-items: flex-start; } }
   .garantia { display: flex; gap: 14px; align-items: center; }
   .garantia .medalha { flex: 0 0 auto; width: 84px; height: 84px; border-radius: 50%; background: var(--verde); color: #fff; display: grid; place-items: center; text-align: center; font-weight: 900; line-height: 1.05; font-size: 15px; box-shadow: 0 0 0 5px #fff, 0 0 0 8px var(--verde); }
   @media (min-width: 640px) { .precos { grid-template-columns: 1fr 1fr; } .galeria { grid-template-columns: repeat(3, 1fr); } .dois { grid-template-columns: 1fr 1fr; } h1 { font-size: 36px; } }
@@ -98,6 +105,26 @@ document.addEventListener("click",function(e){var a=e.target.closest("a,button")
   </div>
   
 
+</section>
+
+<!-- 25/11 (pedido dela, pesquisa de páginas de venda): faixa de confiança + Como funciona + teste grátis logo no começo -->
+<section>
+  <div class="confianca">
+    <span>🔒 Pagamento seguro pela Kiwify</span>
+    <span>↩️ Garantia de 7 dias</span>
+    <span>✋ Cancele quando quiser</span>
+    <span>👩‍🏫 Feito por professora</span>
+  </div>
+  <h2 class="centro" style="margin-top:22px">Como funciona</h2>
+  <div class="tres">
+    <div class="passo"><b>1</b><p><strong>Você escolhe o tempo</strong><br>15 minutos, 20 minutos ou 1 hora.</p></div>
+    <div class="passo"><b>2</b><p><strong>A criança pinta, toca e ouve</strong><br>Letras, números, cores e jogos com a voz da Helena.</p></div>
+    <div class="passo"><b>3</b><p><strong>O tempo acaba e a tela pausa</strong><br>Só você libera de novo.</p></div>
+  </div>
+  <div class="cartao centro" style="margin-top:14px">
+    <p style="margin:0 0 8px"><b>Quer ver antes de assinar?</b> Abra a parte grátis e teste com seu filho hoje.</p>
+    <a class="botao azul" href="./">Abrir a parte grátis</a>
+  </div>
 </section>
 
 <!-- 2. Dor -->
@@ -224,7 +251,7 @@ document.addEventListener("click",function(e){var a=e.target.closest("a,button")
 <!-- Amostra grátis -->
 <section class="centro">
   <h2>Experimente a parte grátis antes</h2>
-  <p>Alguns desenhos, letras, números, quebra-cabeças, o Jogo das Cores e a Feira das Frutas ficam abertos para você testar com seu filho hoje mesmo.</p>
+  <p>Alguns desenhos, letras, números, quebra-cabeças, a Cozinha da Helena e a Feira das Frutas ficam abertos para você testar com seu filho hoje mesmo.</p>
   <a class="botao azul" href="./">Abrir a parte grátis</a>
 </section>
 
